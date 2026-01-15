@@ -47,23 +47,24 @@ def build_order_export_df(
 def build_meeting_comments_df(comments: Dict) -> pd.DataFrame:
     rows = []
     for section, payload in comments.items():
+        display_section = "今月翌月見込み" if section == "今月来月見込み" else section
         if section in {"先月振り返り", "今月来月見込み"}:
-            rows.append({"セクション": section, "カテゴリ": "工場全体", "品目ID": "", "コメント": payload.get("工場全体", "")})
+            rows.append({"セクション": display_section, "カテゴリ": "工場全体", "品目ID": "", "コメント": payload.get("工場全体", "")})
             for item_id, comment in payload.get("品目別", {}).items():
                 rows.append(
-                    {"セクション": section, "カテゴリ": "品目別", "品目ID": item_id, "コメント": comment}
+                    {"セクション": display_section, "カテゴリ": "品目別", "品目ID": item_id, "コメント": comment}
                 )
         elif section == "翌々月発注量":
             for item_id, comment in payload.get("品目別", {}).items():
                 rows.append(
-                    {"セクション": section, "カテゴリ": "品目別", "品目ID": item_id, "コメント": comment}
+                    {"セクション": display_section, "カテゴリ": "品目別", "品目ID": item_id, "コメント": comment}
                 )
         elif section == "DW-309-Mol":
             rows.append(
                 {"セクション": "DW-309-Mol", "カテゴリ": "専用", "品目ID": "", "コメント": payload.get("決定理由", "")}
             )
         else:
-            rows.append({"セクション": section, "カテゴリ": "", "品目ID": "", "コメント": json.dumps(payload, ensure_ascii=False)})
+            rows.append({"セクション": display_section, "カテゴリ": "", "品目ID": "", "コメント": json.dumps(payload, ensure_ascii=False)})
 
     return pd.DataFrame(rows)
 

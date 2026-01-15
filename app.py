@@ -60,6 +60,22 @@ if "discussion_items" not in st.session_state:
     st.session_state.discussion_items = []
 if "order_quantities" not in st.session_state:
     st.session_state.order_quantities = {}
+if "focus_key" not in st.session_state:
+    st.session_state.focus_key = None
+
+
+def render_focusable_header(title: str, table_key: str) -> bool:
+    title_cols = st.columns([0.88, 0.12])
+    with title_cols[0]:
+        st.subheader(title)
+    with title_cols[1]:
+        is_focused = st.session_state.focus_key == table_key
+        button_label = "📋" if is_focused else "🔍"
+        help_text = "縮小表示" if is_focused else "拡大表示"
+        if st.button(button_label, key=f"focus_{table_key}", help=help_text):
+            st.session_state.focus_key = None if is_focused else table_key
+            is_focused = st.session_state.focus_key == table_key
+    return is_focused
 
 normal_items = [item for item in master_items if not item.get("is_long_leadtime")]
 long_leadtime_items = [item for item in master_items if item.get("is_long_leadtime")]
@@ -127,56 +143,52 @@ with meeting_tab:
 
     def _with_links(df: pd.DataFrame) -> pd.DataFrame:
         display_df = df.copy()
-        display_df["品目"] = display_df["品目"].apply(lambda x: f"?item={x}")
         return display_df[["品目", "予測出庫", "実績出庫", "差分", "誤差率(%)"]]
 
-    st.subheader("＋誤差の大きい順（予測より実績が多かった品目）")
+    positive_focused = render_focusable_header(
+        "＋誤差の大きい順（予測より実績が多かった品目）",
+        "review_positive",
+    )
     if positive_df.empty:
         st.caption("対象なし")
     else:
         st.dataframe(
             style_accuracy_dataframe(_with_links(positive_df)),
             use_container_width=True,
-            height=300,
+            height=600 if positive_focused else 300,
             hide_index=True,
-            column_config={
-                "品目": st.column_config.LinkColumn(
-                    "品目",
-                    display_text=r".*item=([^&]+)",
-                )
-            },
         )
 
-    st.subheader("－誤差の大きい順（予測より実績が少なかった品目）")
+    negative_focused = render_focusable_header(
+        "－誤差の大きい順（予測より実績が少なかった品目）",
+        "review_negative",
+    )
     if negative_df.empty:
         st.caption("対象なし")
     else:
         st.dataframe(
             style_accuracy_dataframe(_with_links(negative_df)),
             use_container_width=True,
-            height=300,
+            height=600 if negative_focused else 300,
             hide_index=True,
-            column_config={
-                "品目": st.column_config.LinkColumn(
-                    "品目",
-                    display_text=r".*item=([^&]+)",
-                )
-            },
         )
 
     st.markdown("---")
     st.subheader("🔍 品目別詳細")
     item_ids = accuracy_df["品目"].tolist()
 
-    def _get_query_item() -> str | None:
+    def _get_query_value(key: str) -> "str | None":
         try:
-            item = st.query_params.get("item")
-            if isinstance(item, list):
-                return item[0]
-            return item
+            value = st.query_params.get(key)
+            if isinstance(value, list):
+                return value[0]
+            return value
         except AttributeError:
             params = st.experimental_get_query_params()
-            return params.get("item", [None])[0]
+            return params.get(key, [None])[0]
+
+    def _get_query_item() -> "str | None":
+        return _get_query_value("item")
 
     query_item = _get_query_item()
     default_index = item_ids.index(query_item) if query_item in item_ids else 0
@@ -221,7 +233,7 @@ with meeting_tab:
         st.success("✅ コメントを保存しました")
 
     st.markdown("---")
-    st.header("2️⃣ 今月・来月見込み")
+    st.header("2️⃣ 今月・翌月見込み")
     st.write("確定値は🔒、予測値は📊として表示します。")
 
     if "今月来月見込み" not in st.session_state.comments:
@@ -247,14 +259,14 @@ with meeting_tab:
     )
     next_table = forecast_df[next_columns].rename(
         columns={
-            "今月末予測": "来月頭の予測在庫📊",
+            "今月末予測": "翌月頭の予測在庫📊",
             "手配済み": "手配済み🔒",
-            "来月使用予測": "来月出庫予測📊",
-            "来月末予測": "来月末の予測在庫📊",
+            "来月使用予測": "翌月出庫予測📊",
+            "来月末予測": "翌月末の予測在庫📊",
         }
     )
 
-    st.subheader("📅 今月（2026年1月）")
+    current_focused = render_focusable_header("📅 今月（2026年1月）", "forecast_current")
     st.dataframe(
         style_forecast_dataframe(
             current_table,
@@ -262,19 +274,19 @@ with meeting_tab:
             forecast_columns=["今月使用予測📊", "今月末の予測在庫📊"],
         ),
         use_container_width=True,
-        height=400,
+        height=600 if current_focused else 300,
         hide_index=True,
     )
 
-    st.subheader("📅 来月（2026年2月）")
+    next_focused = render_focusable_header("📅 翌月（2026年2月）", "forecast_next")
     st.dataframe(
         style_forecast_dataframe(
             next_table,
             locked_columns=["手配済み🔒"],
-            forecast_columns=["来月頭の予測在庫📊", "来月出庫予測📊", "来月末の予測在庫📊"],
+            forecast_columns=["翌月頭の予測在庫📊", "翌月出庫予測📊", "翌月末の予測在庫📊"],
         ),
         use_container_width=True,
-        height=400,
+        height=600 if next_focused else 300,
         hide_index=True,
     )
 
@@ -282,8 +294,8 @@ with meeting_tab:
     if not warning_items.empty:
         item_list = ", ".join(warning_items["品目名"].tolist())
         st.warning(
-            "⚠️ **来月末在庫不足の警告**\n\n"
-            f"以下の品目で来月末在庫が安全在庫を下回る予測です: {item_list}"
+            "⚠️ **翌月末在庫が安全在庫を下回る警告**\n\n"
+            f"以下の品目で翌月末在庫が安全在庫を下回る予測です: {item_list}"
         )
 
     st.subheader("📝 品目別特記事項")
@@ -291,7 +303,7 @@ with meeting_tab:
     selected_row = forecast_df[forecast_df["品目名"] == selected_forecast_item].iloc[0]
     st.write(
         f"今月末予測: {selected_row['今月末予測']} kg / "
-        f"来月末予測: {selected_row['来月末予測']} kg"
+        f"翌月末予測: {selected_row['来月末予測']} kg"
     )
 
     forecast_item_comment = st.text_area(
@@ -328,9 +340,59 @@ with meeting_tab:
         st.session_state.safety_factor = 1.2
 
     next_month_forecast = dict(zip(forecast_df["品目名"], forecast_df["来月末予測"]))
+    name_map = {item.get("item_id", ""): item.get("name", "") for item in master_items}
 
-    button_cols = st.columns(2)
-    if button_cols[0].button("デモ用の仮数値を投入"):
+    def build_discussion_rows(source_df: pd.DataFrame, factor: float) -> list[dict]:
+        rows = []
+        for _, row in source_df.iterrows():
+            item_id = row["品目名"]
+            normal_avg = calculate_normal_order_average(monthly_data, item_id)
+            next_month_end = row["来月末在庫予測"]
+            priority, reasons = discussion_reasons(row, normal_avg, next_month_end, factor)
+            if reasons:
+                rows.append(
+                    {
+                        "priority": priority,
+                        "品目ID": item_id,
+                        "品目名": name_map.get(item_id, item_id),
+                        "来月末在庫予測": row["来月末在庫予測"],
+                        "翌々月使用量予測": row["翌々月使用量予測"],
+                        "発注量": row["発注量"],
+                        "翌々月末在庫予測": row["翌々月末在庫予測"],
+                        "リスク": row["リスク"],
+                        "要議論理由": " / ".join(reasons),
+                        "安全在庫": row["安全在庫"],
+                        "上限在庫": row["上限在庫"],
+                    }
+                )
+        return rows
+
+    def filter_discussion_df(source_df: pd.DataFrame) -> pd.DataFrame:
+        return source_df
+
+    if "applied_orders" not in st.session_state:
+        st.session_state.applied_orders = dict(st.session_state.orders)
+    if "applied_safety_factor" not in st.session_state:
+        st.session_state.applied_safety_factor = float(st.session_state.safety_factor)
+    if "discussion_items_initialized" not in st.session_state:
+        applied_order_df = build_order_dataframe(
+            normal_items_only, monthly_data, next_month_forecast, st.session_state.applied_orders
+        )
+        applied_order_df["リスク"] = applied_order_df.apply(
+            lambda row: risk_level(row["翌々月末在庫予測"], row["安全在庫"], row["上限在庫"]),
+            axis=1,
+        )
+        st.session_state.discussion_items = build_discussion_rows(
+            applied_order_df, float(st.session_state.applied_safety_factor)
+        )
+        st.session_state.discussion_items_initialized = True
+    button_cols = st.columns(3)
+    recalc_clicked = button_cols[0].button("🔄 再計算して反映", key="recalculate_discussion")
+    demo_clicked = button_cols[1].button("デモ用の仮数値を投入")
+    reset_clicked = button_cols[2].button("全品目をゼロにリセット")
+
+    auto_recalc = False
+    if demo_clicked:
         discussion_targets = ["DW-005", "DW-012"]
         fallback_targets = [item_id for item_id in item_ids if item_id not in discussion_targets]
         discussion_targets = [
@@ -376,14 +438,16 @@ with meeting_tab:
         st.session_state.demo_orders = {
             item_id: sample_orders.get(item_id, 0) for item_id in item_ids
         }
-
-    if button_cols[1].button("全品目をゼロにリセット"):
+        auto_recalc = True
+    if reset_clicked:
         st.session_state.orders = {item_id: 0 for item_id in item_ids}
         st.session_state.dw309_order = 0
         for key in list(st.session_state.order_quantities.keys()):
             st.session_state.order_quantities[key] = 0
         st.session_state.pop("demo_discussion_targets", None)
         st.session_state.pop("demo_orders", None)
+        auto_recalc = True
+
     order_df = build_order_dataframe(
         normal_items_only, monthly_data, next_month_forecast, st.session_state.orders
     )
@@ -391,57 +455,68 @@ with meeting_tab:
         lambda row: risk_level(row["翌々月末在庫予測"], row["安全在庫"], row["上限在庫"]), axis=1
     )
 
+    current_factor = float(st.session_state.safety_factor)
+    needs_recalc = (
+        st.session_state.orders != st.session_state.applied_orders
+        or current_factor != float(st.session_state.applied_safety_factor)
+    )
+    def _apply_recalculation(success_message: str, show_message: bool = True) -> pd.DataFrame:
+        st.session_state.applied_orders = dict(st.session_state.orders)
+        st.session_state.applied_safety_factor = float(current_factor)
+        applied_order_df = build_order_dataframe(
+            normal_items_only,
+            monthly_data,
+            next_month_forecast,
+            st.session_state.applied_orders,
+        )
+        applied_order_df["リスク"] = applied_order_df.apply(
+            lambda row: risk_level(row["翌々月末在庫予測"], row["安全在庫"], row["上限在庫"]),
+            axis=1,
+        )
+        st.session_state.discussion_items = build_discussion_rows(
+            applied_order_df,
+            float(st.session_state.applied_safety_factor),
+        )
+        if show_message:
+            st.success(success_message)
+        return filter_discussion_df(pd.DataFrame(st.session_state.discussion_items))
+
+    if recalc_clicked:
+        discussion_df = _apply_recalculation("✅ 再計算して反映しました")
+        if not discussion_df.empty:
+            discussion_df = discussion_df.sort_values(["priority", "品目名"])
+        needs_recalc = False
+    elif auto_recalc:
+        discussion_df = _apply_recalculation("✅ 再計算して反映しました", show_message=False)
+        if not discussion_df.empty:
+            discussion_df = discussion_df.sort_values(["priority", "品目名"])
+        needs_recalc = False
+
     safety_factor = st.slider(
-        "来月在庫不足の係数",
+        "翌月末の安全在庫×係数（判定）",
         min_value=1.0,
         max_value=1.5,
         value=float(st.session_state.safety_factor),
         step=0.05,
         key="safety_factor",
     )
-    name_map = {item.get("item_id", ""): item.get("name", "") for item in master_items}
-    discussion_rows = []
-    for _, row in order_df.iterrows():
-        item_id = row["品目名"]
-        normal_avg = calculate_normal_order_average(monthly_data, item_id)
-        next_month_end = row["来月末在庫予測"]
-        priority, reasons = discussion_reasons(row, normal_avg, next_month_end, safety_factor)
-        if reasons:
-            discussion_rows.append(
-                {
-                    "priority": priority,
-                    "品目ID": item_id,
-                    "品目名": name_map.get(item_id, item_id),
-                    "来月末在庫予測": row["来月末在庫予測"],
-                    "翌々月使用量予測": row["翌々月使用量予測"],
-                    "発注量": row["発注量"],
-                    "翌々月末在庫予測": row["翌々月末在庫予測"],
-                    "リスク": row["リスク"],
-                    "要議論理由": " / ".join(reasons),
-                    "安全在庫": row["安全在庫"],
-                    "上限在庫": row["上限在庫"],
-                }
-            )
 
-    discussion_df = pd.DataFrame(discussion_rows)
-    demo_targets = st.session_state.get("demo_discussion_targets")
-    demo_orders = st.session_state.get("demo_orders")
-    if demo_targets and demo_orders:
-        demo_active = all(
-            st.session_state.orders.get(item_id, 0) == demo_orders.get(item_id, 0)
-            for item_id in item_ids
-        )
-        if demo_active and not discussion_df.empty:
-            discussion_df = discussion_df[discussion_df["品目ID"].isin(demo_targets)]
-        else:
-            st.session_state.pop("demo_discussion_targets", None)
-            st.session_state.pop("demo_orders", None)
+    discussion_df = filter_discussion_df(pd.DataFrame(st.session_state.discussion_items))
     if not discussion_df.empty:
         discussion_df = discussion_df.sort_values(["priority", "品目名"])
-        with st.expander(f"⚠️ 要議論品目（{len(discussion_df)}件）", expanded=True):
-            st.dataframe(discussion_df.drop(columns=["priority"]), use_container_width=True, hide_index=True)
 
-    mode = st.radio("表示モード", ["全体俯瞰", "品目別詳細"], horizontal=True)
+    notice_placeholder = st.empty()
+    discussion_placeholder = st.empty()
+
+    if "order_mode" not in st.session_state:
+        st.session_state.order_mode = "品目別詳細"
+    requested_item = _get_query_value("order_item")
+    if requested_item in item_ids and requested_item != st.session_state.get("last_order_item_query"):
+        st.session_state.order_mode = "品目別詳細"
+        st.session_state.order_detail_item = requested_item
+        st.session_state.last_order_item_query = requested_item
+
+    mode = st.radio("表示モード", ["全体俯瞰", "品目別詳細"], horizontal=True, key="order_mode")
 
     if mode == "全体俯瞰":
         editable_df = order_df[
@@ -454,6 +529,7 @@ with meeting_tab:
                 "リスク",
             ]
         ].copy()
+        editable_df = editable_df.rename(columns={"来月末在庫予測": "翌月末在庫予測"})
         editable_df["要議論理由"] = ""
         if not discussion_df.empty:
             reason_map = discussion_df.set_index("品目名")["要議論理由"].to_dict()
@@ -470,7 +546,7 @@ with meeting_tab:
                 },
                 disabled=[
                     "品目名",
-                    "来月末在庫予測",
+                    "翌月末在庫予測",
                     "翌々月使用量予測",
                     "翌々月末在庫予測",
                     "リスク",
@@ -489,7 +565,15 @@ with meeting_tab:
             st.caption("発注量入力後に翌々月末在庫予測とリスクレベルを再計算します。")
 
     else:
-        selected_order_item = st.selectbox("品目を選択", item_ids, index=0, key="order_detail_item")
+        default_index = 0
+        if st.session_state.get("order_detail_item") in item_ids:
+            default_index = item_ids.index(st.session_state.order_detail_item)
+        selected_order_item = st.selectbox(
+            "品目を選択",
+            item_ids,
+            index=default_index,
+            key="order_detail_item",
+        )
         detail_row = order_df[order_df["品目名"] == selected_order_item].iloc[0]
         forecast_row = forecast_df[forecast_df["品目名"] == selected_order_item].iloc[0]
         last_month_end = detail_row["来月末在庫予測"]
@@ -500,24 +584,30 @@ with meeting_tab:
         normal_avg = calculate_normal_order_average(monthly_data, selected_order_item)
 
         st.write(
-            f"📊 来月末在庫予測: {last_month_end} kg "
-            "(計算: 現在庫 + 入荷見込み - 使用量予測)"
-        )
-        st.write(
             f"📊 翌々月使用量予測: {next_next_usage} kg "
             f"(根拠: 過去3ヶ月平均 {usage_avg:.1f} kg)"
         )
 
-        order_qty = st.number_input(
-            "発注量入力 (kg)",
-            min_value=0,
-            value=int(st.session_state.orders.get(selected_order_item, 0)),
-            step=1,
-        )
+        order_cols = st.columns([0.7, 0.3])
+        with order_cols[0]:
+            order_qty = st.number_input(
+                "発注量入力 (kg)",
+                min_value=0,
+                value=int(st.session_state.orders.get(selected_order_item, 0)),
+                step=1,
+            )
+        with order_cols[1]:
+            item_recalc_clicked = st.button("🔄 再計算して反映", key="recalculate_single_item")
         st.session_state.orders[selected_order_item] = order_qty
 
         if normal_avg > 0 and order_qty >= normal_avg * 2:
             st.warning("⚠️ 発注量が通常平均の2倍以上です。")
+
+        if item_recalc_clicked:
+            discussion_df = _apply_recalculation("✅ 再計算して反映しました")
+            if not discussion_df.empty:
+                discussion_df = discussion_df.sort_values(["priority", "品目名"])
+            needs_recalc = False
 
         next_next_end = last_month_end + order_qty - next_next_usage
         risk = risk_level(next_next_end, detail_row["安全在庫"], detail_row["上限在庫"])
@@ -557,6 +647,22 @@ with meeting_tab:
         fig = px.line(trend_df, x="月", y="在庫", markers=True, title="過去6ヶ月の在庫トレンド")
         st.plotly_chart(fig, use_container_width=True)
 
+    if needs_recalc:
+        notice_placeholder.info("編集後は「🔄 再計算して反映」を押すと要議論品目が更新されます。")
+    else:
+        notice_placeholder.empty()
+
+    if not discussion_df.empty:
+        with discussion_placeholder.container():
+            discussion_display_df = discussion_df.rename(columns={"来月末在庫予測": "翌月末在庫予測"})
+            with st.expander(f"⚠️ 要議論品目（{len(discussion_df)}件）", expanded=True):
+                st.dataframe(
+                    discussion_display_df.drop(columns=["priority", "品目名"]),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+    else:
+        discussion_placeholder.empty()
     order_df = build_order_dataframe(
         normal_items_only, monthly_data, next_month_forecast, st.session_state.orders
     )
@@ -574,7 +680,6 @@ with meeting_tab:
             "リスクレベル": row["リスク"],
         }
     st.session_state.calculation_results = calculation_results
-    st.session_state.discussion_items = discussion_rows
 
     st.markdown("---")
     st.header("4️⃣ 🔔 DW-309-Mol 発注量決定（6か月リードタイム品）")
@@ -698,7 +803,10 @@ with meeting_tab:
             st.success("✅ コメントを保存しました")
 
     with st.expander("コメント雛形"):
-        st.json(comments)
+        display_comments = dict(comments)
+        if "今月来月見込み" in display_comments:
+            display_comments["今月翌月見込み"] = display_comments.pop("今月来月見込み")
+        st.json(display_comments)
 
     with st.expander("長期リードタイム品目"):
         st.dataframe(

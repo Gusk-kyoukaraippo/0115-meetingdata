@@ -84,10 +84,10 @@ def discussion_reasons(
     order_qty = row["発注量"]
 
     if next_next_end < safety_stock:
-        reasons.append("欠品リスク")
+        reasons.append("翌々月末在庫が安全在庫を下回る")
         priority = min(priority, 1)
     if next_next_end > max_stock:
-        reasons.append("過剰在庫リスク")
+        reasons.append("翌々月末在庫過剰")
         priority = min(priority, 2)
 
     if normal_order_avg > 0:
@@ -99,7 +99,7 @@ def discussion_reasons(
         priority = min(priority, 3)
 
     if next_month_buffer < safety_stock * factor:
-        reasons.append("来月在庫不足")
+        reasons.append("翌月末在庫が安全在庫×係数を下回る")
         priority = min(priority, 3)
 
     if priority == 99:

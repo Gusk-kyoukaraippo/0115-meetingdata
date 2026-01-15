@@ -13,3 +13,13 @@ app.py: -1/-2 を表示上 - に戻す
 
 修正ファイル: forecast.py
 変更内容: numeric_columns を作成して subset=numeric_columns で format 適用
+
+ーーー
+表の文字色が薄くなるのは Styler の背景色に対して文字色を明示していないのが原因でした。
+文字色を #1b1b1b に固定して視認性を上げました。
+
+修正ファイル:
+
+excel_view.py
+prediction_review.py
+forecast.py
